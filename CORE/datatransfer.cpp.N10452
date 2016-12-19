@@ -1,0 +1,655 @@
+#include "datatransfer.h"
+#include "CORE/coder.h"
+#include<fstream>
+#include<QMessageBox>
+#include<math.h>
+#include<QtConcurrent/QtConcurrent>
+#include<CORE/uploadcontrol.h>
+#include<CORE/downloadcontrol.h>
+#include<QNetworkProxy>
+using namespace std;
+
+
+DataTransfer::DataTransfer(QStringList cloud)
+{
+    this->cloud = cloud;
+    cloudNum = cloud.size();
+    partition = cloudNum;
+    int fair_share = partition/(cloudNum-1);//每个云至少存储的bolck块
+    if(partition%(cloudNum-1)!=0)
+        fair_share++;
+    redundancy = fair_share * cloudNum - partition;
+    manger = new QNetworkAccessManager();
+
+    LoadMetadata();
+    //生成buckets
+    QJsonArray jarr_buckets = snapshot_metadata.array();
+    for(int i=0;i<jarr_buckets.size();i++)
+    {
+        QJsonObject jo_bucket = jarr_buckets.at(i).toObject();
+        Bucket bucket;
+        bucket.bucketName =jo_bucket["bucketname"].toString();
+        bucket.region =jo_bucket["region"].toString();
+        bucket.storageClass = jo_bucket["storageclass"].toString();
+        buckets.push_back(bucket);
+    }
+    //注册代理，方便fiddler调试(必须先打开fiddler！)
+    /*
+    QNetworkProxy proxy;
+    proxy.setType(QNetworkProxy::HttpProxy);
+    proxy.setHostName("127.0.0.1");
+    proxy.setPort(8888);
+    QNetworkProxy::setApplicationProxy(proxy);
+    */
+}
+
+DataTransfer::~DataTransfer()
+{
+
+}
+
+QJsonDocument DataTransfer::GetSnapshot()
+{
+    return snapshot_metadata;
+}
+/*
+void DataTransfer::SpiltToSegment(QString filename)
+{
+    ifstream is;
+    is.open(filename.toStdString(),ios::binary);
+    char *buffer = new char[segmentLength];
+    Coder *coder = new Coder(partition,redundancy);
+    snapshot.fileSize = 0;
+
+    segments.clear();
+    while(!is.eof())
+    {
+        is.read(buffer,segmentLength);
+        snapshot.fileSize+=is.gcount();
+        Segment segment;
+        segment.segmentLength = is.gcount();
+        segment.segmentID = QCryptographicHash::hash(QByteArray(buffer,is.gcount()),QCryptographicHash::Md5).toHex();
+        //encode
+        vector<QByteArray>blocks_data = coder->Encode(QByteArray(buffer,is.gcount()));
+        segment.blockNum = blocks_data.size();
+        segment.blockLength = coder->GetBlockLength();
+        int cnt=0;
+        Block *blocks = new Block[segment.blockNum];
+        //分配block(目前先按照这种简单的均分)
+        for(int i=0;i<segment.blockNum;i++)
+        {
+            blocks[i].blockID = segment.segmentID + '_' + char('0'+i);
+            blocks[i].block_data = blocks_data[i];
+            blocks[i].cloudID = cnt;
+            if(++cnt==cloudNum)
+                cnt=0;
+        }
+        segment.blocks = blocks;
+        segments.push_back(segment);
+    }
+    is.close();
+
+    snapshot.fileName = filename.split('/').last();
+    snapshot.modified = QDateTime::currentDateTime();
+
+}
+*/
+
+void DataTransfer::SpiltToSegment(QString filename)
+{
+    ifstream is;
+    is.open(filename.toStdString(),ios::binary);
+    char *buffer = new char[segmentLength];//保存段文件
+    Coder *coder = new Coder(partition,redundancy);
+
+    QFileInfo info(filename);
+    snapshot.fileSize = info.size();
+    snapshot.fileName = filename.split('/').last();
+    snapshot.modified = QDateTime::currentDateTime().toString(Qt::SystemLocaleShortDate);
+
+    CloudClient *client[cloudNum];
+    for(int i=0;i<cloudNum;i++)
+    {
+        client[i]=CreatCloudClient(cloud[i]);
+    }
+    segments.clear();
+    totalDownloadSize = 0;//记录下载该文件时至少需要下载多少数据
+    while(!is.eof())
+    {
+        is.read(buffer,segmentLength);
+
+        Segment segment;
+        segment.segmentLength = is.gcount();
+        segment.segmentID = QCryptographicHash::hash(QByteArray(buffer,segment.segmentLength),QCryptographicHash::Md5).toHex();
+        //encode
+        vector<QByteArray>blocks_data = coder->Encode(QByteArray(buffer,segment.segmentLength));
+        segment.blockNum = blocks_data.size();
+        segment.blockLength = coder->GetBlockLength();
+        totalDownloadSize+=segment.blockLength*partition;
+        int cnt=0;
+        Block *blocks = new Block[segment.blockNum];
+        //分配block(目前先按照这种简单的均分)
+        for(int i=0;i<segment.blockNum;++i)
+        {
+            blocks[i].blockID = segment.segmentID + '_' + char('0'+i);
+            //blocks[i].block_data = blocks_data[i];
+            blocks[i].cloudID = cnt;
+            if(++cnt==cloudNum)
+                cnt=0;
+            //上传
+
+            QNetworkReply *reply = client[blocks[i].cloudID]->PutObject(snapshot.bucket,blocks[i].blockID,blocks_data[i]);
+            UploadControl *uploadControl = new UploadControl(reply,blocks[i].cloudID,segment.blockLength);
+            connect(uploadControl,SIGNAL(subFinished(int)),this,SLOT(subUploadFinished_slot(int)));
+        }
+        segment.blocks = blocks;
+        segments.push_back(segment);
+
+    }
+    delete buffer;
+    delete coder;
+    delete []client;
+    is.close();
+
+}
+
+CloudClient* DataTransfer::CreatCloudClient(QString cloudName)
+{
+    CloudClient *client;
+    if(cloudName == "google")
+        client = new GoogleClient(manger,"678650154463-l0e33ml70phvp45ivlonqi33n2mqbvpl.apps.googleusercontent.com","Ygv9IXNrM1lQp8NiIZl0nEmG");
+    else if(cloudName == "s3")
+    {
+        S3Client *s3client = new S3Client(manger,"AKIAIMEBKPAEAWBALJWQ","MqwweyrWXS/URHoGUUrEU8uD+N1HIpZD2GJgGmit");
+        s3client->SetBuckets(buckets);
+        client = s3client;
+    }
+    else if(cloudName == "azure")
+    {
+        client = new AzureClient(manger,"8/EeYzYJsrJo9xzI5o9Vqn6+CxizluNAbSp50+qMTH4sbXNlDqMdmFe95N0HhTKXkE8jAysa//2skEJQUTliVg==","bohuang");
+    }
+    else if(cloudName == "aliyun")
+    {
+        client = new AliyunClient(manger,"llSBXSvTA3UySoBd","oknuoMSVMLGH6VFoLGtaaaHfDgi3iU");
+    }
+    else
+        client = NULL;
+    return client;
+}
+
+bool DataTransfer::CreateBucket(QString bucketName, QString region, QString storageClass)
+{
+    if(IsExistBucket(bucketName))
+        return false;
+    CloudClient *client;
+    for(int i=0;i<cloudNum;i++)
+    {
+        client = CreatCloudClient(cloud[i]);
+        if(!client->CreateBucket(bucketName,region,storageClass))
+            return false;
+    }
+    QJsonArray bucktes = snapshot_metadata.array();
+    QJsonObject bucket;
+    bucket.insert("bucketname",bucketName);
+    bucket.insert("region",region);
+    bucket.insert("storageclass",storageClass);
+    QJsonArray files;
+    bucket.insert("files",files);
+    bucktes.append(bucket);
+    snapshot_metadata.setArray(bucktes);
+    UploadMetadata();
+    return true;
+}
+
+int DataTransfer::GetFileSize(QString bucketName,QString fileName)
+{
+    QJsonArray jarr_buckets = snapshot_metadata.array();
+    for(int i=0;i<jarr_buckets.size();++i)
+    {
+        QJsonObject jo_bucket = jarr_buckets.at(i).toObject();
+        if(jo_bucket["bucketname"].toString()==bucketName)
+        {
+            QJsonArray jarr_files = jo_bucket["files"].toArray();
+            for(int j=0;j<jarr_files.size();++j)
+            {
+                QJsonObject jo_file = jarr_files.at(j).toObject();
+                if(jo_file["filename"].toString()==fileName)
+                    return jo_file["filesize"].toInt();
+            }
+        }
+    }
+    return 0;
+}
+
+int DataTransfer::GetDownloadSize(QString bucketName,QString fileName)
+{
+    QJsonArray jarr_buckets = snapshot_metadata.array();
+    for(int i=0;i<jarr_buckets.size();++i)
+    {
+        QJsonObject jo_bucket = jarr_buckets.at(i).toObject();
+        if(jo_bucket["bucketname"].toString()==bucketName)
+        {
+            QJsonArray jarr_files = jo_bucket["files"].toArray();
+            for(int j=0;j<jarr_files.size();++j)
+            {
+                QJsonObject jo_file = jarr_files.at(j).toObject();
+                if(jo_file["filename"].toString()==fileName)
+                {
+                    return jo_file["filedownloadsize"].toInt();
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int DataTransfer::GetUploadSize(QString path)
+{
+    QFileInfo info(path);
+    int size = info.size();
+    int reminder = size%segmentLength;
+    //block的头占4个字节
+    int uploadsize = (4+segmentLength%partition+segmentLength/partition)*(partition+redundancy)
+            *(size/segmentLength)+(4+reminder%partition+reminder/partition)*(partition+redundancy);
+    return uploadsize;
+}
+
+bool DataTransfer::IsFileExist(QString bucketName,QString fileName)
+{
+    bool exist = false;
+    QJsonArray jarr_buckets = snapshot_metadata.array();
+    for(int i=0;i<jarr_buckets.size();i++)
+    {
+        QJsonObject jo_bucket = jarr_buckets.at(i).toObject();
+        if(jo_bucket["bucketname"].toString()==bucketName)
+        {
+
+            QJsonArray jarr_files = jo_bucket["files"].toArray();
+
+            for(int j=0;j<jarr_files.size();j++)
+            {
+
+                QJsonObject jo_file = jarr_files.at(j).toObject();
+                if(jo_file["filename"].toString()==fileName.split('/').last())
+                {
+                    exist = true;
+                    break;
+                }
+            }
+        }
+        if(exist)
+            break;
+    }
+    return exist;
+}
+
+void DataTransfer::subUploadFinished_slot(int size)
+{
+    emit uploadProgress_signal(size);
+}
+
+bool DataTransfer::Upload(QString bucketName, QString fileName)
+{
+    //检查文件是否存在
+    bool exist = IsFileExist(bucketName,fileName);
+    //切分文件
+    snapshot.bucket = bucketName;
+    SpiltToSegment(fileName);
+    /*
+    //上传
+    CloudClient *client[cloudNum];
+    for(int i=0;i<cloudNum;i++)
+    {
+        client[i]=CreatCloudClient(cloud[i]);
+    }
+    //计算每一个云上需要上传的blocks数
+    int blocksTotal = 0;
+    if(segments.size()!=0)
+        blocksTotal = segments.size()*segments[0].blockNum/cloudNum;
+    for(int i=0;i<segments.size();i++)
+    {
+        Segment segment = segments[i];
+        for(int j=0;j<segment.blockNum;j++)
+        {
+            Block block = segment.blocks[j];
+            QNetworkReply *reply = client[block.cloudID]->PutObject(bucketName,block.blockID,block.block_data);
+            // 这样写上传完成后不知道是上传到的哪一个云
+            //connect(reply,SIGNAL(finished()),this,SLOT(subUploadFinished_slot()));
+
+            //用一个uploadcontrol类保存额外信息
+            UploadControl *uploadControl = new UploadControl(reply,block.cloudID,blocksTotal);
+            connect(uploadControl,SIGNAL(subFinished(int,int)),this,SLOT(subUploadFinished_slot(int,int)));
+        }
+    }
+    */
+    UpdateMetadataForUpload(exist);
+    UploadMetadata();
+    //todo:free space
+    //cloudclient and segments
+    return true;
+}
+
+void DataTransfer::subDownloadFinished_slot(int size)
+{
+    emit downloadProgress_signal(size);
+}
+
+bool DataTransfer::DownLoad(QString bucketName, QString fileName, QString outputPath)
+{
+    CloudClient *client[cloudNum];
+    for(int i=0;i<cloudNum;i++)
+        client[i] = CreatCloudClient(cloud[i]);
+    QJsonArray jarr_files = segmentpool_metadata.array();
+    //writeFile ofstream
+    writeFile.open(outputPath.toStdString(),ios::binary);
+    //问题：下载的文件partition可能和当前partition不一样，比如上传这个文件之后添加了一个云
+    //待改进……
+    for(int i=0;i<jarr_files.size();i++)
+    {
+        QJsonObject jo_file = jarr_files.at(i).toObject();
+        if(jo_file["filename"].toString()!=fileName||jo_file["bucketname"]!=bucketName)
+            continue;
+        //找到要下载的文件
+        QJsonArray jarr_segments = jo_file["segments"].toArray();
+        int fileSize = GetFileSize(bucketName,fileName);
+
+        lastIsFinished = false;//最后一个数据段是否已经写入文件
+        for(int j=0;j<jarr_segments.size();j++)
+        {
+            QJsonObject segment = jarr_segments.at(j).toObject();
+            QJsonArray jarr_blocks = segment["blocks"].toArray();
+            int blockSize = segment["blocklength"].toInt();
+            download_blocks.clear();
+
+            QEventLoop loop;//控制同步
+            DownloadControl downloadControl(partition,jarr_blocks.size(),blockSize);//控制下载segment的所有blocks
+            connect(&downloadControl,SIGNAL(downloadFinished()),&loop,SLOT(quit()));
+            connect(&downloadControl,SIGNAL(subFinished(int)),this,SLOT(subDownloadFinished_slot(int)));
+            for(int k=0;k<jarr_blocks.size();k++)
+            {
+                QJsonObject jo_block = jarr_blocks.at(k).toObject();
+                Block block;
+                block.blockID = jo_block["blockid"].toString().toLatin1();
+                block.cloudID = jo_block["cloudid"].toInt();
+                //if(block.cloudID==0) test single point of failure
+                //    continue;
+
+                //同步下载
+                /*QNetworkReply *reply = client[block.cloudID]->GetObject(bucketName,block.blockID);
+                QEventLoop loop;
+                connect(reply,SIGNAL(finished()),&loop,SLOT(quit()));
+                loop.exec();
+                if(reply->error()==QNetworkReply::NoError)
+                    download_blocks.push_back(reply->readAll());
+                if(download_blocks.size()==partition)
+                    break;*/
+
+                QNetworkReply *reply = client[block.cloudID]->GetObject(bucketName,block.blockID);
+                downloadControl.Run(reply);
+
+
+            }
+            //等待下载完成
+            loop.exec();
+            //这里有点阻塞，因为解码比较耗时
+            /*
+            QByteArray segment_data = coder.Decode(downloadControl.GetBlocks());
+            if(segment_data == NULL)
+            {
+                qDebug()<<"没能获取到足够的块文件！";
+                //break;
+            }
+            os.write(segment_data,segment_data.count());
+            */
+            //更改后的
+            dblocks = downloadControl.GetBlocks();
+
+            //QtConcurrent::run(DecodeAndWrite); 不能这样写
+            QtConcurrent::run(this,&DataTransfer::DecodeAndWrite,j==jarr_segments.size()-1);
+        }
+        //不能这样直接close，因为最后一个数据段还在写文件,因此要等最后一个写文件任务结束
+        //writeFile.close();
+        //更改后的
+        /*while(!lastIsFinished)//阻塞线程
+            ;
+        writeFile.close();
+
+        emit downloadFinished_signal();
+        */
+        //最后还是把这些操作放到了DecodeAndWrite函数中
+        break;
+    }
+    return true;
+}
+
+void DataTransfer::DecodeAndWrite(bool isLast)
+{
+    Coder coder;
+    //有一个问题：dblocks是全局的，所以有可能下载速度比解码速度快，即新的下载数据覆盖了dblocks
+    //所以Coder::Decoder改为值传递，之前写的引用传递
+    QByteArray segment_data = coder.Decode(dblocks);
+    if(segment_data == NULL)
+    {
+        qDebug()<<"没能获取到足够的块文件！";
+        return;
+    }
+    //上互斥锁
+    mutex.lock();
+    writeFile.write(segment_data,segment_data.count());
+    mutex.unlock();
+    if(isLast)//如果当前是最后一个数据段，则最后一个数据段已经写入到文件中了
+    {
+        lastIsFinished = true;
+        writeFile.close();
+        emit downloadFinished_signal();
+    }
+}
+
+bool DataTransfer::DeleteFile(QString bucketName,QString fileName)
+{
+    CloudClient *client[cloudNum];
+    for(int i=0;i<cloudNum;i++)
+        client[i] = CreatCloudClient(cloud[i]);
+    QJsonArray jarr_segmentpool = segmentpool_metadata.array();
+    for(int i=0;i<jarr_segmentpool.size();i++)
+    {
+        QJsonObject jo_file = jarr_segmentpool.at(i).toObject();
+        if(jo_file["bucketname"].toString()!=bucketName||jo_file["filename"].toString()!=fileName)
+            continue;
+        QJsonArray jarr_segments = jo_file["segments"].toArray();
+        for(int j=0;j<jarr_segments.size();j++)
+        {
+            QJsonObject segment = jarr_segments.at(j).toObject();
+            QJsonArray jarr_blocks = segment["blocks"].toArray();
+            for(int k=0;k<jarr_blocks.size();k++)
+            {
+                QJsonObject jo_block = jarr_blocks.at(k).toObject();
+                QString blockID = jo_block["blockid"].toString();
+                int cloudID = jo_block["cloudid"].toInt();
+                client[cloudID]->DeleteObject(bucketName,blockID);
+            }
+        }
+        //更新metadata
+        jarr_segmentpool.removeAt(i);
+        segmentpool_metadata.setArray(jarr_segmentpool);
+
+        QJsonArray jarr_snapshot = snapshot_metadata.array();
+        for(int i=0;i<jarr_snapshot.size();i++)
+        {
+            QJsonObject jo_bucket = jarr_snapshot.at(i).toObject();
+            if(jo_bucket["bucketname"] != bucketName)
+                continue;
+            QJsonArray jarr_files = jo_bucket["files"].toArray();
+            for(int j=0;j<jarr_files.size();j++)
+            {
+                QJsonObject jo_file = jarr_files.at(j).toObject();
+                if(jo_file["filename"] != fileName)
+                    continue;
+                jarr_files.removeAt(j);
+                jo_bucket.insert("files",jarr_files);
+                jarr_snapshot.replace(i,jo_bucket);
+                snapshot_metadata.setArray(jarr_snapshot);
+                break;
+            }
+            break;
+        }
+        UploadMetadata();
+        return true;
+    }
+    return false;
+}
+
+void DataTransfer::LoadMetadata()
+{
+    QByteArray segmentpool_data = NULL;
+    QByteArray snapshot_data = NULL;
+    //从一个可用的云上获取metadata
+    for(int i=0;i<cloudNum;++i)
+    {
+        CloudClient *client = CreatCloudClient(cloud[i]);
+        QNetworkReply *reply = client->GetObject("bohuang","segmentpool");
+        QEventLoop eventLoop;
+        connect(reply,SIGNAL(finished()),&eventLoop,SLOT(quit()));
+        eventLoop.exec();
+        if (reply->error() == QNetworkReply::NoError)
+        {
+            segmentpool_data = reply->readAll();
+            segmentpool_metadata = QJsonDocument::fromJson(segmentpool_data);
+            reply->deleteLater();
+            delete client;
+            break;
+        }
+        delete client;
+    }
+    ////////////////////////////////////////////////////////////////////////
+    for(int i=0;i<cloudNum;++i)
+    {
+        CloudClient *client = CreatCloudClient(cloud[i]);
+        QNetworkReply *reply = client->GetObject("bohuang","snapshot");
+        QEventLoop eventLoop;
+        connect(reply,SIGNAL(finished()),&eventLoop,SLOT(quit()));
+        eventLoop.exec();
+        if (reply->error() == QNetworkReply::NoError)
+        {
+            snapshot_data = reply->readAll();
+            snapshot_metadata = QJsonDocument::fromJson(snapshot_data);
+            reply->deleteLater();
+            delete client;
+            break;
+        }
+        delete client;
+    }
+
+}
+
+
+void DataTransfer::UpdateMetadataForUpload(bool exist)
+{
+    QJsonArray jarr_snapshot = snapshot_metadata.array();
+    for(int i=0;i<jarr_snapshot.size();i++)
+    {
+        QJsonObject jo_bucket = jarr_snapshot.at(i).toObject();
+        if(jo_bucket["bucketname"] != snapshot.bucket)
+            continue;
+        QJsonArray jarr_files = jo_bucket["files"].toArray();
+        if(exist)
+        {
+            for(int j=0;j<jarr_files.size();j++)
+            {
+                QJsonObject jo_file = jarr_files.at(j).toObject();
+                if(jo_file["filename"]==snapshot.fileName)
+                {
+                    jarr_files.removeAt(j);
+                    break;
+                }
+            }
+        }
+        QJsonObject jo;
+        jo.insert("filename",snapshot.fileName);
+        jo.insert("filesize",(int)snapshot.fileSize);
+        jo.insert("modified",snapshot.modified);
+        jo.insert("filedownloadsize",totalDownloadSize);
+        //jo.insert("partition",QString::number(partition,10));
+        //jo.insert("redundancy",QString::number(redundancy,10));
+        jarr_files.append(jo);
+        jo_bucket["files"] = jarr_files;
+        jarr_snapshot.replace(i,jo_bucket);
+        snapshot_metadata.setArray(jarr_snapshot);
+        break;
+    }
+    ///////////////////////////////////////////////////////////
+    QJsonArray jarr_files = segmentpool_metadata.array();
+    //如果存在则先删除
+    if(exist)
+    {
+        for(int i=0;i<jarr_files.size();i++)
+        {
+            QJsonObject jo_file = jarr_files.at(i).toObject();
+            if(jo_file["bucketname"].toString()==snapshot.bucket
+                    &&jo_file["filename"].toString()==snapshot.fileName)
+            {
+                jarr_files.removeAt(i);
+                break;
+            }
+        }
+    }
+    QJsonObject jo_file;
+    jo_file.insert("filename",snapshot.fileName);
+    jo_file.insert("bucketname",snapshot.bucket);
+    QJsonArray jarr_segments;
+    for(int i=0;i<segments.size();i++)
+    {
+        QJsonObject jo_segment;
+        Segment segment = segments[i];
+        jo_segment.insert("segmentid",QString(segment.segmentID));
+        jo_segment.insert("blocknum",segment.blockNum);
+        jo_segment.insert("segmentlength",segment.segmentLength);
+        jo_segment.insert("blocklength",segment.blockLength);
+        QJsonArray jarr_blocks;
+        for(int j=0;j<segment.blockNum;j++)
+        {
+            Block block = segment.blocks[j];
+            QJsonObject jo_block;
+            jo_block.insert("blockid",QString(block.blockID));
+            jo_block.insert("cloudid",block.cloudID);
+            jarr_blocks.append(jo_block);
+        }
+        jo_segment.insert("blocks",jarr_blocks);
+        jarr_segments.append(jo_segment);
+    }
+    jo_file.insert("segments",jarr_segments);
+    jarr_files.append(jo_file);
+    segmentpool_metadata.setArray(jarr_files);
+}
+
+void DataTransfer::UploadMetadata()
+{
+    CloudClient *client;
+    for(int i=0;i<cloudNum;i++)
+    {
+        client=CreatCloudClient(cloud[i]);
+        client->PutObject("bohuang","snapshot",snapshot_metadata.toJson(QJsonDocument::Compact));;
+        client->PutObject("bohuang","segmentpool",segmentpool_metadata.toJson(QJsonDocument::Compact));
+    }
+}
+
+bool DataTransfer::IsExistBucket(QString bucketName)
+{
+    QJsonArray buckets = snapshot_metadata.array();
+    for(int i=0;i<buckets.size();i++)
+    {
+        QJsonObject bucket = buckets.at(i).toObject();
+        if(bucket["bucketname"].toString()==bucketName)
+            return true;
+    }
+    return false;
+}
+
+QStringList DataTransfer::GetBucket()
+{
+    QStringList bucketsList;
+    for(int i=0;i<buckets.size();i++)
+        bucketsList<<buckets[i].bucketName;
+    return bucketsList;
+}
+

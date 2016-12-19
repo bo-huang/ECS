@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/">
+        <file>unicloud.bmp</file>
+        <file>add.png</file>
+        <file>aliyun.jpg</file>
+        <file>amazon.jpg</file>
+        <file>azure.jpg</file>
+        <file>baiduyun.png</file>
+        <file>google.jpg</file>
+        <file>checked.png</file>
+    </qresource>
+</RCC>
