@@ -11,7 +11,10 @@ void UploadControl::finished()
         //emit subFinished(cloudID,totalBlocks);
         emit subFinished(blockSize);
     else
+    {
         qDebug()<<QString("cloud %1 upload error").arg(cloudID);
+        emit subFinished(0);
+    }
     reply->deleteLater();
     reply->close();
 }

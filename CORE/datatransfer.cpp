@@ -526,7 +526,7 @@ bool DataTransfer::DownLoad(QString bucketName, QString fileName, QString output
             blocks[k].cloudID = GetIdByName(jo_block["cloudname"].toString());
         }
         SortByRate(blocks,jarr_blocks.size());
-        int cnt = 0;
+        int cnt = 0;//已下载的数据块
         for(int k=0;k<jarr_blocks.size();k++)
         {
             //if(block.cloudID==0) test single point of failure
@@ -548,12 +548,20 @@ bool DataTransfer::DownLoad(QString bucketName, QString fileName, QString output
                 downloadControl.Run(reply);
             }
             //先这样处理网络资源浪费（但如果有数据块不能访问则有问题……）
-            if(cnt>=partition)
-                break;
+            //if(cnt>=partition)
+            //    break;
 
+            //下载完partition快后就结束（改进后的,解决上面那个问题）
+            if(cnt==partition)
+            {
+                //等待下载完成
+                loop.exec();
+                cnt = downloadControl.DownloadBlocksCount();
+                if(cnt==partition)//如果所有数据快下载完成
+                    break;
+            }
         }
-        //等待下载完成
-        loop.exec();
+
         //这里有点阻塞，因为解码比较耗时
         /*
         QByteArray segment_data = coder.Decode(downloadControl.GetBlocks());
