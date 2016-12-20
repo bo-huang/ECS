@@ -16,7 +16,8 @@ public:
     QNetworkReply* DeleteObject(QString bucketName,QString objectName) override;
     bool CreateBucket(QString bucketName, QString region, QString storageClass) override;
     void SetBuckets(std::vector<Bucket> &buckets);
-    bool Login();
+    bool Login() override;
+    bool DeleteBucket(QString bucketName) override;
 private:
     //注意：在生成签名时，无论bucket的存储区域在哪里，都是us-east-1 !!!（好隐蔽的问题。。。）
     QNetworkRequest GetRequestForGetObject(QString bucketName,QString objectName);
@@ -24,6 +25,7 @@ private:
     QNetworkRequest GetRequestForDeleteObject(QString bucketName,QString objectName);
     QNetworkRequest GetRequestForCreateBucket(QString bucketName,QByteArray data);
     QNetworkRequest GetRequestForCopyObject(QString bucketName,QString objectName,QString desBucketName);
+    QNetworkRequest GetRequestForDeleteBucket(QString bucketName);
     QString GetDateTime();
     QString GetDate();
     QByteArray GetSignatureKey(QByteArray date,QByteArray region);

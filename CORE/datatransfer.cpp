@@ -43,7 +43,6 @@ DataTransfer::DataTransfer(QList<CloudInfo> &clouds)
         bucket.storageClass = jo_bucket["storageclass"].toString();
         buckets.push_back(bucket);
     }
-
 }
 
 DataTransfer::~DataTransfer()
@@ -300,6 +299,16 @@ bool DataTransfer::CreateBucket(QString bucketName, QString region, QString stor
     snapshot_metadata.setArray(bucktes);
     UploadMetadata();
     return true;
+}
+
+void DataTransfer::DeleteBucket(QString bucketName)
+{
+    CloudClient *client;
+    for(int i=0;i<cloudNum;i++)
+    {
+        client = CreatCloudClient(clouds[i]);
+        client->DeleteBucket(bucketName);
+    }
 }
 
 int DataTransfer::GetFileSize(QString bucketName,QString fileName)

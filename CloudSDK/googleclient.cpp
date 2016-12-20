@@ -10,6 +10,7 @@
 QString GoogleClient::access_token=NULL;
 QString GoogleClient::refresh_token=NULL;
 QTime GoogleClient::expires_time;
+QString GoogleClient::projectID;
 
 GoogleClient::GoogleClient(QNetworkAccessManager *manger,QString secertID,QString secertKey)
     :CloudClient(manger)
@@ -64,6 +65,35 @@ bool GoogleClient::Login()
         return true;
     }
     return false;
+}
+
+bool GoogleClient::DeleteBucket(QString bucketName)
+{
+    //检查access_token是否有效
+    if(QTime::currentTime()>= expires_time)
+        //access_token = GetAccessTokenByRefreshToken();
+        Login();
+    if(access_token==NULL)
+    {
+        qDebug() << "access_token is NULL" ;
+        return false;
+    }
+    QString url = "https://www.googleapis.com/storage/v1/b/"+bucketName;
+
+    QNetworkRequest request(url);
+    request.setRawHeader("Authorization","Bearer "+access_token.toLatin1());
+    request.setRawHeader("Host","www.googleapis.com");
+
+    QNetworkReply *reply = manger->deleteResource(request);
+    QEventLoop eventloop;
+    connect(reply,SIGNAL(finished()),&eventloop,SLOT(quit()));
+    eventloop.exec();
+    reply->deleteLater();
+    reply->close();
+    if (reply->error() == QNetworkReply::NoError)
+        return true;
+    else
+        return false;
 }
 
 bool GoogleClient::CreateBucket(QString bucketName, QString region, QString storageClass)

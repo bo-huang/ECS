@@ -221,6 +221,41 @@ bool AzureClient::Login()
         return false;
 }
 
+bool AzureClient::DeleteBucket(QString bucketName)
+{
+    QString X_MS_DATE = GetCurrentTimeUTC();
+    QString X_MS_VERSION = "2015-04-05";
+    QString container = bucketName;
+    QString canonicalizedResource =
+            "/"+account+"/"+container+"\nrestype:container";
+    QString canonicalizedHeaders =
+            "x-ms-date:"+X_MS_DATE+"\n" + "x-ms-version:" + X_MS_VERSION;
+    QString signature =
+            CreateHeader("DELETE","","","",
+                         "","","","",
+                         "","","","",
+                         canonicalizedHeaders,canonicalizedResource);
+    QByteArray authorizationHeader = QMessageAuthenticationCode::hash(
+                QByteArray(signature.toUtf8()),
+                QByteArray(QByteArray::fromBase64(sharedKey.toLatin1())),
+                QCryptographicHash::Sha256).toBase64();
+    QString url = QString("https://%1.blob.core.windows.net/%2?restype=container").arg(account,container);
+    QNetworkRequest request;
+    request.setUrl(QUrl(url));
+    request.setRawHeader("Authorization","SharedKey "+account.toLatin1()+":" + authorizationHeader);
+    request.setRawHeader("x-ms-date", X_MS_DATE.toLatin1());
+    request.setRawHeader("x-ms-version", X_MS_VERSION.toLatin1());
+    QEventLoop loop;
+    QNetworkReply* reply = manger->deleteResource(request);
+    connect(reply,SIGNAL(finished()),&loop,SLOT(quit()));
+    loop.exec();
+    reply->deleteLater();
+    reply->close();
+    if(reply->error()==QNetworkReply::NoError)
+        return true;
+    return false;
+}
+
 QString AzureClient::CreateHeader(
         QString Http_Verb, QString Content_Encoding, QString Content_Language, QString Content_Length,
         QString Content_MD5, QString Content_Type, QString Date, QString If_Modified_Since,

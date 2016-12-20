@@ -185,3 +185,29 @@ bool AliyunClient::Login()
     else
         return false;
 }
+//bucket必须为空
+bool AliyunClient::DeleteBucket(QString bucketName)
+{
+    QString date = GetCurrentTimeUTC();
+    QString canonicalizedHeaders = "";
+    QString canonicalizedResource = "/"+bucketName+"/";
+    QString signature =
+            CreateHeader("DELETE","","",date,canonicalizedHeaders,canonicalizedResource);
+    QByteArray authorization = QMessageAuthenticationCode::hash(
+                signature.toLatin1(),accessKeySecert.toLatin1(),QCryptographicHash::Sha1).toBase64();
+    QString region = "oss-cn-hangzhou";
+    QString url = QString("http://%1.%2.aliyuncs.com").arg(bucketName,region);
+    QNetworkRequest request;
+    request.setUrl(url);
+    request.setRawHeader("Date",date.toLatin1());
+    request.setRawHeader("Authorization","OSS "+accessKeyID.toLatin1()+":"+authorization);
+    QEventLoop loop;
+    QNetworkReply* reply = manger->deleteResource(request);
+    connect(reply,SIGNAL(finished()),&loop,SLOT(quit()));
+    loop.exec();
+    reply->deleteLater();
+    reply->close();
+    if(reply->error()==QNetworkReply::NoError)
+        return true;
+    return false;
+}

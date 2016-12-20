@@ -15,7 +15,8 @@ public:
     QNetworkReply* DeleteObject(QString bucketName,QString objectName) override;
     //这里region和storageclass 没用
     bool CreateBucket(QString bucketName, QString region, QString storageClass) override;
-    bool Login();
+    bool Login() override;
+    bool DeleteBucket(QString bucketName) override;
 private:
     QString CreateHeader(
             QString Http_Verb, QString Content_Encoding, QString Content_Language, QString Content_Length,

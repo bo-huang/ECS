@@ -41,6 +41,7 @@ public:
     int GetUploadSize(QString path);
     bool IsFileExist(QString bucketName,QString fileName);
     bool Rename(QString bucketName,QString fileName,QString newName);
+    void DeleteBucket(QString bucketName);
 signals:
     void uploadProgress_signal(int size);
     void downloadProgress_signal(int size);

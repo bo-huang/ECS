@@ -115,6 +115,19 @@ bool S3Client::Login()
         return false;
 }
 
+
+bool S3Client::DeleteBucket(QString bucketName)
+{
+    QNetworkRequest request = GetRequestForDeleteBucket(bucketName);
+    QNetworkReply* reply = manger->deleteResource(request);
+    reply->deleteLater();
+    reply->close();
+    if (reply->error() == QNetworkReply::NoError)
+        return true;
+    else
+        return false;
+}
+
 /*
 QByteArray S3Client::GetObjectAcl(QString bucketName, QString objectName)
 {
@@ -301,6 +314,38 @@ QNetworkRequest S3Client::GetRequestForDeleteObject(QString bucketName, QString 
 
     return request;
 }
+
+QNetworkRequest S3Client::GetRequestForDeleteBucket(QString bucketName)
+{
+    QByteArray date = GetDate().toLatin1();
+    QByteArray datetime = GetDateTime().toLatin1();
+    QString region_str = ParseLoaction(GetRegion(bucketName));
+    //QString region_str = "ap-southeast-1";
+    QByteArray region = region_str.toLatin1();
+    QByteArray host = GetHost(region_str,bucketName).toLatin1();
+    QByteArray canonicalRequest = "DELETE\n/";
+    canonicalRequest+="\n\n";
+    canonicalRequest+="host:"+host+"\n";
+    canonicalRequest+="x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n";
+    canonicalRequest+="x-amz-date:"+datetime+"\n\n";
+    canonicalRequest+="host;x-amz-content-sha256;x-amz-date\n";
+    canonicalRequest+="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+    QByteArray stringToSign = "AWS4-HMAC-SHA256\n"+datetime+"\n"+date+"/"+region+"/s3/aws4_request\n";
+    stringToSign+=QCryptographicHash::hash(canonicalRequest,QCryptographicHash::Sha256).toHex();
+    QByteArray kSigning = GetSignatureKey(date,region);
+    QByteArray signature = QMessageAuthenticationCode::hash(stringToSign,kSigning, QCryptographicHash::Sha256).toHex();
+    QByteArray authorization = "AWS4-HMAC-SHA256 Credential="+secertID.toLatin1()+"/"+date+"/"+region+"/s3/aws4_request,SignedHeaders=host;x-amz-content-sha256;x-amz-date,Signature="+signature;
+
+    QNetworkRequest request(QUrl("http://"+host));
+    request.setRawHeader("Host",host);
+    request.setRawHeader("x-amz-date",datetime);
+    request.setRawHeader("Authorization",authorization);
+    request.setRawHeader("x-amz-content-sha256","e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+
+    return request;
+}
+
 /*
 QNetworkRequest S3Client::GetRequestForGetObjectAcl(QString bucketName, QString objectName)
 {

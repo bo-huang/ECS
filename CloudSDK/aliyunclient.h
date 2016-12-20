@@ -14,7 +14,8 @@ public:
     QNetworkReply* CopyObject(QString bucketName, QString objectName, QString desBucketName) override;
     QNetworkReply* DeleteObject(QString bucketName,QString objectName) override;
     bool CreateBucket(QString bucketName, QString region, QString storageClass) override;
-    bool Login();
+    bool Login() override;
+    bool DeleteBucket(QString bucketName) override;
 private:
     QString CreateHeader(
             QString httpVerb,QString contentMD5, QString contentType, QString Date,

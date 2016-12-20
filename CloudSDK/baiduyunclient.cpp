@@ -187,3 +187,30 @@ bool BaiduyunClient::Login()
     else
         return false;
 }
+
+bool BaiduyunClient::DeleteBucket(QString bucketName)
+{
+    QString datetime = GetCurrentDateTimeUtc();
+    QString host = QString("%1.%2.bcebos.com").arg(bucketName,region);
+    QString canonicalRequest = QString("DELETE\n/\n\nhost:%1").arg(host);
+    QString authStringPrefix = QString("bce-auth-v1/%1/%2/1800").arg(secertID,datetime);
+    QByteArray signingKey = QMessageAuthenticationCode::hash(authStringPrefix.toLatin1(),secertKey.toLatin1(),QCryptographicHash::Sha256).toHex();
+    QByteArray signature =  QMessageAuthenticationCode::hash(canonicalRequest.toLatin1(),signingKey,QCryptographicHash::Sha256).toHex();
+    QString authorization = authStringPrefix+"/host/"+signature;
+    QString url = QString("https://%1").arg(host);
+    QNetworkRequest request;
+    request.setUrl(url);
+    request.setRawHeader("Authorization",authorization.toLatin1());
+    QLocale lo = QLocale::English;//设置QLocale为英文
+    QString date = lo.toString(QDateTime::currentDateTimeUtc(),"ddd, dd MMM yyyy hh:mm:ss")+" GMT";
+    request.setRawHeader("Date",date.toLatin1());
+    QEventLoop loop;
+    QNetworkReply* reply = manger->deleteResource(request);
+    connect(reply,SIGNAL(finished()),&loop,SLOT(quit()));
+    loop.exec();
+    reply->deleteLater();
+    reply->close();
+    if(reply->error()==QNetworkReply::NoError)
+        return true;
+    return false;
+}

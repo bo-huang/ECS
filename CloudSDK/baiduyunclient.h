@@ -15,7 +15,8 @@ public:
     QNetworkReply* DeleteObject(QString bucketName,QString objectName) override;
     bool CreateBucket(QString bucketName, QString region, QString storageClass) override;
     void SetBuckets(std::vector<Bucket> &buckets);
-    bool Login();
+    bool Login() override;
+    bool DeleteBucket(QString bucketName) override;
 private:
     QString GetCurrentDateTimeUtc();
     QString ParseStorageClass(QString storageClass);

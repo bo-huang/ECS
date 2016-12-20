@@ -17,8 +17,9 @@ public:
     QNetworkReply* CopyObject(QString bucketName, QString objectName, QString desBucketName) override;
     QNetworkReply* DeleteObject(QString bucketName,QString objectName) override;
     bool CreateBucket(QString bucketName, QString region, QString storageClass) override;
-    bool Login();
+    bool Login() override;
     QString GetRefreshToken();
+    bool DeleteBucket(QString bucketName) override;
 private:
     //获取下载链接
     QString GetmediaLink(QString bucketName,QString objectName);
@@ -35,7 +36,7 @@ private:
     static QTime expires_time;//记录access_token过期时间
     QString secertID;
     QString secertKey;
-    QString projectID;
+    static QString projectID;
     const char *jsonPath;
 };
 
