@@ -15,6 +15,7 @@ public:
     virtual QNetworkReply* DeleteObject(QString bucketName,QString objectName)=0;
     virtual bool CreateBucket(QString bucketName,QString region,QString storageClass)=0;
     virtual QNetworkReply* CopyObject(QString bucketName, QString objectName, QString desBucketName)=0;
+    virtual bool Login() = 0;
 protected:
     QNetworkAccessManager *manger;
 };

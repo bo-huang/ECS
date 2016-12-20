@@ -3,6 +3,7 @@
 
 #include <QDialog>
 #include <CLASS/cloudinfo.h>
+#include <CloudSDK/cloudclient.h>
 
 namespace Ui {
 class LoginDialog;
@@ -19,6 +20,8 @@ public:
 private:
     void Init();
     bool CheckAccount();
+    bool CreateDefaultBucket();
+    CloudClient * CreateCloudClient();
 signals:
     void AddCloud(CloudInfo cloud);
 private slots:
@@ -35,6 +38,7 @@ private slots:
 private:
     Ui::LoginDialog *ui;
     QString cloudName;
+    QString defaultBucket;
 };
 
 #endif // LOGINDIALOG_H

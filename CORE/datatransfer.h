@@ -71,6 +71,7 @@ private:
     void UploadMetadata();
     void DecodeAndWrite(bool);
     void SortByRate(Block *blocks,int num);
+    bool CmpRate(Block &,Block &);
     int GetIdByName(QString cloudName);
     void DeleteForMoveFile(QString bucketName, QString fileName, QString desBucketName);
 private:
@@ -98,6 +99,8 @@ private:
     ofstream writeFile;
     QMutex mutex;
     bool lastIsFinished;
+    //速率排序列表
+    QStringList rateList;
 };
 
 #endif // DATATRANSFER_H

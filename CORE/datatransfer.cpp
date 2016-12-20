@@ -284,7 +284,10 @@ bool DataTransfer::CreateBucket(QString bucketName, QString region, QString stor
     {
         client = CreatCloudClient(clouds[i]);
         if(!client->CreateBucket(bucketName,region,storageClass))
+        {
+            //TODO：删除在部分云上new的bucket
             return false;
+        }
     }
     QJsonArray bucktes = snapshot_metadata.array();
     QJsonObject bucket;
@@ -529,6 +532,7 @@ bool DataTransfer::DownLoad(QString bucketName, QString fileName, QString output
         int cnt = 0;//已下载的数据块
         for(int k=0;k<jarr_blocks.size();k++)
         {
+
             //if(block.cloudID==0) test single point of failure
             //    continue;
 
@@ -596,14 +600,41 @@ bool DataTransfer::DownLoad(QString bucketName, QString fileName, QString output
     delete []blocks;
     return true;
 }
+//b1>b2 返回true
+bool DataTransfer::CmpRate(Block &b1,Block &b2)
+{
+    //暂时按照google aliyun s3 baiduyun azure的顺序，实际应该根据每个云的upload ratel
+    rateList<<"google"<<"aliyun"<<"s3"<<"baiduyun"<<"azure";
+    QString cloudName1 = rateList.last();
+    QString cloudName2 = rateList.last();
+    //要判断某个云不存在的情形（不存在时cloudID = -1）
+    if(b1.cloudID!=-1)
+        cloudName1 = clouds[b1.cloudID].cloudName;
+    if(b2.cloudID!=-1)
+        cloudName2 = clouds[b2.cloudID].cloudName;
+
+    int i;
+    for(i=0;i<rateList.size();++i)
+        if(cloudName1==rateList[i])
+            break;
+    for(int j=0;j<rateList.size();++j)
+        if(cloudName2==rateList[j])
+        {
+            if(j>=i)
+                return true;
+            else
+                return false;
+        }
+    return false;
+}
 
 void DataTransfer::SortByRate(Block *blocks,int num)
 {
-    //暂时按照google aliyun baiduyun s3 azure的顺序，实际应该根据每个云的upload ratel
+
     Block tmp;
     for(int i=1;i<num;++i)
         for(int j=0;j<num-i;++j)
-            if(blocks[j].cloudID>blocks[j+1].cloudID)
+            if(!CmpRate(blocks[j],blocks[j+1]))
             {
                 tmp=blocks[j];
                 blocks[j]=blocks[j+1];
@@ -616,6 +647,7 @@ int DataTransfer::GetIdByName(QString cloudName)
     for(int i=clouds.size()-1;i>=0;--i)
         if(cloudName==clouds[i].cloudName)
             return i;
+    //没有找到
     return -1;
 }
 
@@ -993,8 +1025,9 @@ void DataTransfer::LoadMetadata()
     if(!is_first_in)
         return;
     is_first_in = false;
-    QByteArray segmentpool_data;
-    QByteArray snapshot_data;
+    //初始化为空
+    QByteArray segmentpool_data = "[]";
+    QByteArray snapshot_data = "[]";
     //从一个可用的云上获取metadata
     for(int i=0;i<cloudNum;++i)
     {
@@ -1247,6 +1280,17 @@ bool DataTransfer::Rename(QString bucketName, QString fileName, QString newName)
 
 vector<Bucket> DataTransfer::GetBucket()
 {
+    QJsonArray jarr_buckets = snapshot_metadata.array();
+    buckets.clear();
+    for(int i=0;i<jarr_buckets.size();i++)
+    {
+        QJsonObject jo_bucket = jarr_buckets.at(i).toObject();
+        Bucket bucket;
+        bucket.bucketName =jo_bucket["bucketname"].toString();
+        bucket.region =jo_bucket["region"].toString();
+        bucket.storageClass = jo_bucket["storageclass"].toString();
+        buckets.push_back(bucket);
+    }
     return buckets;
 }
 

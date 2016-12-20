@@ -107,7 +107,7 @@
         </rect>
        </property>
        <property name="text">
-        <string>Next</string>
+        <string>Ok</string>
        </property>
       </widget>
       <widget class="QLabel" name="errorLabel">
@@ -237,7 +237,7 @@
         </rect>
        </property>
        <property name="text">
-        <string>Next</string>
+        <string>Ok</string>
        </property>
       </widget>
       <widget class="QLabel" name="errorLabel_3">

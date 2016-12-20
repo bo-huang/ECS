@@ -6,6 +6,7 @@
 #include <CloudSDK/googleclient.h>
 #include <CloudSDK/s3client.h>
 #include <QFileDialog>
+#include <QDateTime>
 
 LoginDialog::LoginDialog(QWidget *parent) :
     QDialog(parent),
@@ -56,57 +57,97 @@ void LoginDialog::Init()
     }
 }
 
-bool LoginDialog::CheckAccount()
+CloudClient* LoginDialog::CreateCloudClient()
 {
     QNetworkAccessManager *manger = new QNetworkAccessManager;
-    if(cloudName=="google")
+    if(cloudName == "google")
     {
         QString jsonPath = ui->jsonLabel->text();
         if(jsonPath.isEmpty())
-            return false;
-        GoogleClient *google = new GoogleClient(manger,jsonPath.toStdString().data());
-        return google->Login();
+            return NULL;
+        return new GoogleClient(manger,jsonPath.toStdString().data());
     }
     else
     {
         QString accessKeyID = ui->secertIdLineEdit->text();
         QString secertaccesskey = ui->secertKeyLineEdit->text();
         if(accessKeyID.isEmpty()||secertaccesskey.isEmpty())
-            return false;
-        if(cloudName=="aliyun")
+            return NULL;
+        if(cloudName == "aliyun")
         {
-            AliyunClient *aliyun = new AliyunClient(manger,accessKeyID,secertaccesskey);
-            return aliyun->Login();
+            return new AliyunClient(manger,accessKeyID,secertaccesskey);
         }
         else if(cloudName=="baiduyun")
         {
-            BaiduyunClient *baiduyun = new BaiduyunClient(manger,accessKeyID,secertaccesskey);
-            return baiduyun->Login();
+            return new BaiduyunClient(manger,accessKeyID,secertaccesskey);
         }
         else if(cloudName=="s3")
         {
-            S3Client *s3 = new S3Client(manger,accessKeyID,secertaccesskey);
-            return s3->Login();
+            return new S3Client(manger,accessKeyID,secertaccesskey);
         }
         else if(cloudName=="azure")
         {
-            AzureClient *azure = new AzureClient(manger,accessKeyID,secertaccesskey);
-            return azure->Login();
+            return new AzureClient(manger,accessKeyID,secertaccesskey);
         }
+        else
+            return NULL;
     }
-    return false;
+}
+
+bool LoginDialog::CheckAccount()
+{
+    CloudClient *client = CreateCloudClient();
+    if(client==NULL)
+        return false;
+    return client->Login();
+}
+
+bool LoginDialog::CreateDefaultBucket()
+{
+    defaultBucket = "unicloud"+QDateTime::currentDateTime().toString("yyyyMMddhhmmss");
+    CloudClient *client = CreateCloudClient();
+    if(client==NULL)
+        return false;
+    return client->CreateBucket(defaultBucket,"Asia","STANDARD");
 }
 
 void LoginDialog::on_nextButton_1_clicked()
 {
     //检查secertid,secertkey是否正确
-    ui->errorLabel->setText("");
+    ui->errorLabel->setText("Authorizing……");
     if(CheckAccount())
     {
-        ui->stackedWidget->setCurrentWidget(ui->bucketPage);
+        //ui->stackedWidget->setCurrentWidget(ui->bucketPage);
+        ui->errorLabel->setText("Initialize cloud……");
+        if(CreateDefaultBucket())
+        {
+            ui->errorLabel->setText("Initializion completed");
+            //添加云
+            CloudInfo cloud;
+            if(cloudName=="google")
+                cloud.account = ui->accountLineEdit_1->text();
+            else
+                cloud.account = ui->accountLineEdit->text();
+            if(cloud.account.isEmpty())
+                cloud.account = "noname@mail.com";
+            cloud.addTime = QDateTime::currentDateTime().toString(Qt::SystemLocaleShortDate);
+            cloud.cloudName = cloudName;
+            if(cloudName=="google")
+            {
+                cloud.certificate = ui->jsonLabel->text();
+            }
+            else
+            {
+                cloud.certificate = ui->secertIdLineEdit->text() + '|' + ui->secertKeyLineEdit->text();
+            }
+            cloud.defaultBucket = defaultBucket;
+            emit AddCloud(cloud);
+        }
+        else
+            ui->errorLabel->setText("Initializion error");
     }
     else
-        ui->errorLabel->setText("Configuration error!");
+        ui->errorLabel->setText("Authorization error!");
 }
 
 void LoginDialog::on_preButton_clicked()
@@ -153,11 +194,39 @@ void LoginDialog::on_importButton_clicked()
 void LoginDialog::on_nextButton_3_clicked()
 {
     //google cloud
-    ui->errorLabel_3->setText("");
+    ui->errorLabel_3->setText("Authorizing……");
     if(CheckAccount())
     {
-        ui->stackedWidget->setCurrentWidget(ui->bucketPage);
+        //ui->stackedWidget->setCurrentWidget(ui->bucketPage);
+        ui->errorLabel_3->setText("Initialize cloud……");
+        if(CreateDefaultBucket())
+        {
+            ui->errorLabel_3->setText("Initializion completed");
+
+            //添加云
+            CloudInfo cloud;
+            if(cloudName=="google")
+                cloud.account = ui->accountLineEdit_1->text();
+            else
+                cloud.account = ui->accountLineEdit->text();
+            if(cloud.account.isEmpty())
+                cloud.account = "noname@mail.com";
+            cloud.addTime = QDateTime::currentDateTime().toString(Qt::SystemLocaleShortDate);
+            cloud.cloudName = cloudName;
+            if(cloudName=="google")
+            {
+                cloud.certificate = ui->jsonLabel->text();
+            }
+            else
+            {
+                cloud.certificate = ui->secertIdLineEdit->text() + '|' + ui->secertKeyLineEdit->text();
+            }
+            cloud.defaultBucket = defaultBucket;
+            emit AddCloud(cloud);
+        }
+        else
+            ui->errorLabel_3->setText("Initializion error");
     }
     else
-        ui->errorLabel_3->setText("Configuration error!");
+        ui->errorLabel_3->setText("Authorizing error!");
 }
