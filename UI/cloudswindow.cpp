@@ -50,6 +50,11 @@ void CloudsWindow::SetCloud(QStringList clouds)
     layout->addWidget(ui->addButton,clouds.size()/3,clouds.size()%3);
 }
 
+void CloudsWindow::SetBuckets(std::vector<Bucket> buckets)
+{
+    this->buckets = buckets;
+}
+
 QPushButton *CloudsWindow::GetButtonByName(QString cloudName)
 {
     if(cloudName=="aliyun")
@@ -99,6 +104,7 @@ void CloudsWindow::listcloudItemClicked(QListWidgetItem *item)
             return;
     //此处应调用cloud登录界面--待完善
     login = new LoginDialog(this->parentWidget(),cloudName);
+    login->SetBuckets(buckets);
     connect(login,SIGNAL(AddCloud(CloudInfo)),this,SLOT(AddCloud_slot(CloudInfo)));
     login->exec();
 }

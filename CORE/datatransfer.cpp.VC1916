@@ -197,7 +197,7 @@ void DataTransfer::SpiltToSegment(QString bucketname,QString filepath)
             Block *blocks = new Block[segment.blockNum];
             //检查云是否可以访问
             QList<int>badClouds;
-            int goodCloud;
+            int googCloud;
             QJsonArray records;
             bool everyCloudIsOk = EveryCloudIsOk(badClouds);
             if(!everyCloudIsOk)
@@ -218,13 +218,13 @@ void DataTransfer::SpiltToSegment(QString bucketname,QString filepath)
                 //不分配block到当前不能访问的云
                 if(badClouds.contains(k))
                 {
-                    blocks[i].cloudID = goodCloud;
+                    blocks[i].cloudID = googCloud;
                     //记录信息（待badcloud恢复后，迁移block）
                     QJsonObject record;
                     record.insert("bucketname",bucketname);
-                    record.insert("blockid",QString(blocks[i].blockID));
-                    record.insert("sourcecloud",clouds[goodCloud].cloudName);
-                    record.insert("descloud",clouds[k].cloudName);
+                    record.insert("blockid",blocks[i].blockID);
+                    record.insert("sourcecloud",clouds[k].cloudName);
+                    record.insert("descloud",clouds[goodCloud].cloudName);
                     records.append(record);
                 }
                 else
@@ -234,7 +234,9 @@ void DataTransfer::SpiltToSegment(QString bucketname,QString filepath)
             if(!everyCloudIsOk)
             {
                 //上传记录到服务器
-                UploadRecords(records);
+                QJsonDocument json;
+                json.setArray(records);
+                UploadRecords(json.toJson(QJsonDocument::Compact));
             }
             //上传
             for(int i=0;i<segment.blockNum;++i)
@@ -270,7 +272,6 @@ void DataTransfer::SpiltToSegment(QString bucketname,QString filepath)
 //检查每个云是否都可以正常访问
 bool DataTransfer::EveryCloudIsOk(QList<int> &badClouds)
 {
-    manger = new QNetworkAccessManager();
     bool ok = true;
     for(int i=0;i<cloudNum;++i)
     {
@@ -284,37 +285,20 @@ bool DataTransfer::EveryCloudIsOk(QList<int> &badClouds)
     return ok;
 }
 
-bool DataTransfer::UploadRecords(const QJsonArray &jsonArray)
+bool DataTransfer::UploadRecords(const QByteArray &jsondata)
 {
     //读server地址
     QFileInfo fileInfo("server");
     const int fileSize = fileInfo.size();
-    char buffer[fileSize];
+    char serverName[fileSize];
     ifstream is;
     is.open("server",ios::binary);
-    is.read(buffer,fileSize);
+    is.read(serverName,fileSize);
     is.close();
-    QJsonDocument server = QJsonDocument::fromJson(QByteArray(buffer,fileSize));
-    QString path = server.object()["server"].toString()+"/migration";
-
-    fileInfo = QFileInfo(path);
-    const int fileSize1 = fileInfo.size();
-    char buffer1[fileSize1];
-    is.open(path.toStdString(),ios::binary);
-    is.read(buffer1,fileSize1);
-    is.close();
-    QJsonDocument records_origin = QJsonDocument::fromJson(QByteArray(buffer1,fileSize1));
-    QJsonArray records_origin_array = records_origin.array();
-    for(int i=0;i<jsonArray.size();++i)
-    {
-        records_origin_array.append(jsonArray.at(i));
-    }
-    records_origin.setArray(records_origin_array);
-    QByteArray data = records_origin.toJson(QJsonDocument::Compact);
     //将records写到服务器
     ofstream os;
-    os.open(path.toStdString(),ios::binary);
-    os.write(data.data(),data.size());
+    os.open(serverName+"/migration",ios::binary);
+    os.write(jsondata.data(),jsondata.size());
     os.close();
     return true;
 }
@@ -363,20 +347,14 @@ bool DataTransfer::CreateBucket(QString bucketName, QString region, QString stor
     if(IsExistBucket(bucketName))
         return false;
     CloudClient *client;
-    for(int i=0;i<cloudNum;++i)
+    for(int i=0;i<cloudNum;i++)
     {
         client = CreatCloudClient(clouds[i]);
         if(!client->CreateBucket(bucketName,region,storageClass))
         {
             //TODO：删除在部分云上new的bucket
-            for(int j=0;j<i;++j)
-            {
-                client = CreatCloudClient(clouds[i]);
-                client->DeleteBucket(bucketName);
-            }
             return false;
         }
-        delete client;
     }
     QJsonArray bucktes = snapshot_metadata.array();
     QJsonObject bucket;

@@ -24,6 +24,11 @@ LoginDialog::LoginDialog(QWidget *parent,QString cloudName) :
     Init();
 }
 
+void LoginDialog::SetBuckets(std::vector<Bucket> &buckets)
+{
+    this->buckets = buckets;
+}
+
 LoginDialog::~LoginDialog()
 {
     delete ui;
@@ -111,6 +116,19 @@ bool LoginDialog::CreateDefaultBucket()
     return client->CreateBucket(defaultBucket,"Asia","STANDARD");
 }
 
+bool LoginDialog::CreateUserBucket()
+{
+    CloudClient *client = CreateCloudClient();
+    if(client==NULL)
+        return false;
+    for(int i=0;i<buckets.size();++i)
+    {
+        Bucket bucket = buckets[i];
+        client->CreateBucket(bucket.bucketName,bucket.region,bucket.storageClass);
+    }
+    return true;
+}
+
 void LoginDialog::on_nextButton_1_clicked()
 {
     //检查secertid,secertkey是否正确
@@ -121,6 +139,7 @@ void LoginDialog::on_nextButton_1_clicked()
         ui->errorLabel->setText("Initialize cloud……");
         if(CreateDefaultBucket())
         {
+            CreateUserBucket();
             ui->errorLabel->setText("Initializion completed");
             //添加云
             CloudInfo cloud;

@@ -2,7 +2,7 @@
 #include <QApplication>
 #include <QNetworkProxy>
 
-#define MYDEBUG
+//#define MYDEBUG
 
 int main(int argc, char *argv[])
 {

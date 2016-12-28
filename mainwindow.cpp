@@ -209,7 +209,7 @@ void MainWindow::on_listWidget_itemSelectionChanged()
 
         ui->stackedWidget->setCurrentWidget(ui->filesPage);
     }
-    else if(selText=="Task")
+    else if(selText=="Tasks")
     {
         ui->stackedWidget->setCurrentWidget(ui->taskPage);
     }
@@ -613,6 +613,7 @@ void MainWindow::on_addButton_clicked()
     for(int i=0;i<clouds.size();++i)
         cloud<<clouds[i].cloudName;
     cloudsWindow->SetCloud(cloud);
+    cloudsWindow->SetBuckets(dataTransfer->GetBucket());
     cloudsWindow->show();
 }
 void MainWindow::addCloud(CloudInfo cloudInfo)

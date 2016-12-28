@@ -75,6 +75,8 @@ private:
     bool CmpRate(Block &,Block &);
     int GetIdByName(QString cloudName);
     void DeleteForMoveFile(QString bucketName, QString fileName, QString desBucketName);
+    bool EveryCloudIsOk(QList<int>& badClouds);
+    bool UploadRecords(const QJsonArray &json);
 private:
     //long long _filesize;//after encode
     const int segmentLength = 1024*1024*16;//each block 2MB
