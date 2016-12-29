@@ -87,6 +87,7 @@ private:
     QMenu *cloudPopMenu;
     QAction *removeAction;
     QString namebefore;//修改前的名字
+
 };
 
 #endif // MAINWINDOW_H

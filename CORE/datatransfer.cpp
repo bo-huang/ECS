@@ -43,6 +43,7 @@ DataTransfer::DataTransfer(QList<CloudInfo> &clouds)
         bucket.storageClass = jo_bucket["storageclass"].toString();
         buckets.push_back(bucket);
     }
+
 }
 
 DataTransfer::~DataTransfer()
@@ -287,35 +288,42 @@ bool DataTransfer::EveryCloudIsOk(QList<int> &badClouds)
 bool DataTransfer::UploadRecords(const QJsonArray &jsonArray)
 {
     //读server地址
+    ifstream is;
+    is.open("server",ios::binary);
+    if(!is)
+        return false;
     QFileInfo fileInfo("server");
     const int fileSize = fileInfo.size();
     char buffer[fileSize];
-    ifstream is;
-    is.open("server",ios::binary);
     is.read(buffer,fileSize);
     is.close();
-    QJsonDocument server = QJsonDocument::fromJson(QByteArray(buffer,fileSize));
-    QString path = server.object()["server"].toString()+"/migration";
-
-    fileInfo = QFileInfo(path);
-    const int fileSize1 = fileInfo.size();
-    char buffer1[fileSize1];
-    is.open(path.toStdString(),ios::binary);
-    is.read(buffer1,fileSize1);
-    is.close();
-    QJsonDocument records_origin = QJsonDocument::fromJson(QByteArray(buffer1,fileSize1));
+    QUrl url(QString(QByteArray(buffer,fileSize))+"migration");
+    //从服务器读migration
+    manger = new QNetworkAccessManager();
+    QEventLoop loop;
+    QNetworkRequest request;
+    request.setUrl(url);
+    QNetworkReply *reply = manger->get(request);
+    connect(reply,SIGNAL(finished()),&loop,SLOT(quit()));
+    loop.exec();
+    QByteArray replyData = "[]";
+    //Todo:此处应分migration不存在和请求出错两种情况讨论
+    if(reply->error()==QNetworkReply::NoError)
+    {
+        replyData = reply->readAll();
+        reply->deleteLater();
+        reply->close();
+    }
+    //向服务器写migration
+    QJsonDocument records_origin = QJsonDocument::fromJson(replyData);
     QJsonArray records_origin_array = records_origin.array();
     for(int i=0;i<jsonArray.size();++i)
     {
         records_origin_array.append(jsonArray.at(i));
     }
     records_origin.setArray(records_origin_array);
-    QByteArray data = records_origin.toJson(QJsonDocument::Compact);
-    //将records写到服务器
-    ofstream os;
-    os.open(path.toStdString(),ios::binary);
-    os.write(data.data(),data.size());
-    os.close();
+    QByteArray postData = records_origin.toJson(QJsonDocument::Compact);
+    manger->put(request,postData);
     return true;
 }
 
