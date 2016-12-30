@@ -43,7 +43,8 @@ SOURCES += main.cpp\
     UI/logindialog.cpp \
     CLASS/jwt.cpp \
     CLASS/systemtime.cpp \
-    CORE/deletecontrol.cpp
+    CORE/deletecontrol.cpp \
+    UI/serverdialog.cpp
 
 HEADERS  += mainwindow.h \
     CLASS/block.h \
@@ -73,14 +74,16 @@ HEADERS  += mainwindow.h \
     UI/logindialog.h \
     CLASS/jwt.h \
     CLASS/systemtime.h \
-    CORE/deletecontrol.h
+    CORE/deletecontrol.h \
+    UI/serverdialog.h
 
 FORMS    += mainwindow.ui \
     UI/createbucketdialog.ui \
     UI/uploaddialog.ui \
     UI/movefiledialog.ui \
     UI/cloudswindow.ui \
-    UI/logindialog.ui
+    UI/logindialog.ui \
+    UI/serverdialog.ui
 
 RESOURCES += \
     qrc/images.qrc

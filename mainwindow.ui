@@ -841,6 +841,13 @@
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_6">
           <item>
+           <widget class="QPushButton" name="serverButton">
+            <property name="text">
+             <string>Server</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QPushButton" name="addButton">
             <property name="font">
              <font>

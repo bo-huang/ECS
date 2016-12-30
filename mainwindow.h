@@ -33,6 +33,8 @@ private:
     void AddTask(Operation &operation);
     void ReadCloudFile();
     void WriteCloudFile();
+    bool ReadServerFile(QByteArray &server);
+    bool WriteServerFile(const QByteArray &server);
 signals:
     void bucketNameIslegal(bool);
 private slots:
@@ -70,6 +72,8 @@ private slots:
     void on_filesTableWidget_customContextMenuRequested(const QPoint &pos);
 
     void on_cloudsTableWidget_customContextMenuRequested(const QPoint &pos);
+
+    void on_serverButton_clicked();
 
 private:
     Ui::MainWindow *ui;

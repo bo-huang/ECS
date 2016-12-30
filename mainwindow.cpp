@@ -13,6 +13,7 @@
 #include <UI/createbucketdialog.h>
 #include <UI/movefiledialog.h>
 #include <UI/cloudswindow.h>
+#include <UI/serverdialog.h>
 #include <CLASS/progressbardelegation.h>
 #include <QFileInfo>
 #include <QThread>
@@ -583,6 +584,21 @@ void MainWindow::on_cloudsTableWidget_itemClicked(QTableWidgetItem *item)
 {
     ui->removeButton->setVisible(true);
 }
+//配置服务器（用于云间数据迁移）
+void MainWindow::on_serverButton_clicked()
+{
+    //读server文本
+    QByteArray server;
+    ReadServerFile(server);
+
+    ServerDialog *serverDialog = new ServerDialog(this);
+    serverDialog->SetServer(QString(server));
+    serverDialog->exec();
+    if(serverDialog->isOK)
+    {
+        WriteServerFile(serverDialog->serverName.toLatin1());
+    }
+}
 //移除云
 void MainWindow::on_removeButton_clicked()
 {
@@ -686,6 +702,28 @@ void MainWindow::WriteCloudFile()
     os.write(jsondata.data(),jsondata.size());
     os.close();
 
+}
+bool MainWindow::ReadServerFile(QByteArray &server)
+{
+    QFileInfo info("server");
+    const int size = info.size();
+    if(size==0)
+        return false;
+    char buffer[size];
+    ifstream is;
+    is.open("server",ios::binary);
+    is.read(buffer,size);
+    is.close();
+    server = QByteArray(buffer,size);
+    return true;
+}
+bool MainWindow::WriteServerFile(const QByteArray &server)
+{
+    ofstream os;
+    os.open("server",ios::binary);
+    os.write(server.data(),server.size());
+    os.close();
+    return true;
 }
 
 //pop menu
