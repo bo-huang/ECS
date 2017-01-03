@@ -35,6 +35,7 @@ private:
     void WriteCloudFile();
     bool ReadServerFile(QByteArray &server);
     bool WriteServerFile(const QByteArray &server);
+    bool Migration(QString cloueName);
 signals:
     void bucketNameIslegal(bool);
 private slots:

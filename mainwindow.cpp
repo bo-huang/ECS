@@ -37,7 +37,7 @@ void MainWindow::Init()
     dataTransfer = new DataTransfer(clouds);
     //初始化状态栏
     msgLabel=new QLabel();
-    msgLabel->setFont(QFont("Algerian",12));
+    msgLabel->setFont(QFont("Microsoft YaHei UI",12));
     this->ui->statusBar->addWidget(msgLabel);
     //均分每一列
     //ui->filesTableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
@@ -610,16 +610,32 @@ void MainWindow::on_removeButton_clicked()
         messageBox.setStandardButtons(QMessageBox::Yes|QMessageBox::No);
         if(messageBox.exec()==QMessageBox::Yes)
         {
-            //cloud.removeAt(row);
-            clouds.removeAt(row);
-            ui->cloudsTableWidget->removeRow(row);
-            dataTransfer = new DataTransfer(clouds);
-            WriteCloudFile();
+            msgLabel->setText("Prepare for migrating data...");
+            if(Migration(clouds[row].cloudName))
+            {
+                clouds.removeAt(row);
+                ui->cloudsTableWidget->removeRow(row);
+                dataTransfer = new DataTransfer(clouds);
+                WriteCloudFile();
+                msgLabel->setText("Completed");
+                QMessageBox::information(this,"Warning","Do not delete the cloud before data has been migrated!",QMessageBox::Ok);
+            }
+            else
+            {
+                QMessageBox::information(this,"Tip","Please check the server!",QMessageBox::Ok);
+            }
+            msgLabel->setText("");
         }
     }
     else
         QMessageBox::information(this,"inform","please choose a file!");
 }
+//向服务器发送待迁移的数据
+bool MainWindow::Migration(QString cloudName)
+{
+    return dataTransfer->RemoveCloud(cloudName);
+}
+
 //添加云
 void MainWindow::on_addButton_clicked()
 {

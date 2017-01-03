@@ -235,6 +235,7 @@ void DataTransfer::SpiltToSegment(QString bucketname,QString filepath)
             if(!everyCloudIsOk)
             {
                 //上传记录到服务器
+                UploadClouds();
                 UploadRecords(records);
             }
             //上传
@@ -285,6 +286,105 @@ bool DataTransfer::EveryCloudIsOk(QList<int> &badClouds)
     return ok;
 }
 
+bool DataTransfer::RemoveCloud(QString cloudName)
+{
+    QJsonArray records;
+    QJsonArray segmentpool = segmentpool_metadata.array();
+    int avgBlocksNum = 12/(cloudNum-1);//移除云后平均每一个云上的block数
+    int *curblocksNum = new int[cloudNum];//现在每一个云上的block数
+    int flag[12];//记录该block块是否更改过
+    for(int i=0;i<segmentpool.size();++i)
+    {
+        QJsonObject segment = segmentpool.at(i).toObject();
+        QJsonArray blocks = segment["blocks"].toArray();
+
+        memset(curblocksNum,0,cloudNum*sizeof(int));
+        memset(flag,0,sizeof(flag));
+        for(int j=0;j<blocks.size();++j)
+        {
+            QJsonObject block = blocks.at(j).toObject();
+            int cloudID = GetIdByName(block["cloudname"].toString());
+            ++curblocksNum[cloudID];
+        }
+        //开始迁移
+        for(int j=0;j<cloudNum;++j)
+        {
+            if(clouds[j].cloudName==cloudName)
+                continue;
+            if(curblocksNum[j]>=avgBlocksNum)
+                continue;
+            //对于少于avgBlocksNum的云，从其他超过avgBlocksNum的云上移过来
+            for(int k=0;blocks.size();++k)
+            {
+                //已经添加到了足够的数据块，则结束
+                if(curblocksNum[j]>=avgBlocksNum)
+                    break;
+                if(flag[k])
+                    continue;
+                QJsonObject block = blocks.at(k).toObject();
+                QString _cloudName = block["cloudname"].toString();
+                if(_cloudName==clouds[j].cloudName)
+                    continue;
+                int cloudID = GetIdByName(_cloudName);
+                if(_cloudName==cloudName||curblocksNum[cloudID]>avgBlocksNum)
+                {
+                    --curblocksNum[cloudID];
+                    ++curblocksNum[j];
+                    flag[k]=true;
+                    QJsonObject record;
+                    record.insert("bucketname",segment["bucketname"].toString());
+                    record.insert("blockid",block["blockid"].toString());
+                    record.insert("sourcecloud",_cloudName);
+                    record.insert("descloud",clouds[j].cloudName);
+                    records.append(record);
+                }
+            }
+        }
+    }
+    // 上传clouds文件和records文件
+    return UploadClouds()&&UploadRecords(records);
+}
+//上传clouds到服务器
+bool DataTransfer::UploadClouds()
+{
+    //读server地址
+    ifstream is;
+    is.open("server",ios::binary);
+    if(!is)
+        return false;
+    QFileInfo fileInfo("server");
+    int fileSize = fileInfo.size();
+    char *buffer = new char[fileSize];
+    is.read(buffer,fileSize);
+    QUrl url(QString(QByteArray(buffer,fileSize))+"/clouds");
+    is.close();
+    delete []buffer;
+    //读clouds
+    is.open("clouds",ios::binary);
+    if(!is)
+        return false;
+    fileInfo.setFile("clouds");
+    fileSize = fileInfo.size();
+    buffer = new char[fileSize];
+    is.read(buffer,fileSize);
+    QByteArray postData(buffer,fileSize);
+    is.close();
+    delete []buffer;
+    //上传
+    QEventLoop loop;
+    QNetworkRequest request;
+    request.setUrl(url);
+    QNetworkReply *reply = manger->put(request,postData);
+    connect(reply,SIGNAL(finished()),&loop,SLOT(quit()));
+    loop.exec();
+    bool ok = false;
+    if(reply->error()==QNetworkReply::NoError)
+        ok = true;
+    reply->deleteLater();
+    reply->close();
+    return ok;
+}
+
 bool DataTransfer::UploadRecords(const QJsonArray &jsonArray)
 {
     //读server地址
@@ -297,7 +397,7 @@ bool DataTransfer::UploadRecords(const QJsonArray &jsonArray)
     char buffer[fileSize];
     is.read(buffer,fileSize);
     is.close();
-    QUrl url(QString(QByteArray(buffer,fileSize))+"migration");
+    QUrl url(QString(QByteArray(buffer,fileSize))+"/migration");
     //从服务器读migration
     manger = new QNetworkAccessManager();
     QEventLoop loop;

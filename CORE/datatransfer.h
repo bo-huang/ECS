@@ -42,6 +42,7 @@ public:
     bool IsFileExist(QString bucketName,QString fileName);
     bool Rename(QString bucketName,QString fileName,QString newName);
     void DeleteBucket(QString bucketName);
+    bool RemoveCloud(QString cloudName);
 signals:
     void uploadProgress_signal(int size);
     void downloadProgress_signal(int size);
@@ -77,6 +78,7 @@ private:
     void DeleteForMoveFile(QString bucketName, QString fileName, QString desBucketName);
     bool EveryCloudIsOk(QList<int>& badClouds);
     bool UploadRecords(const QJsonArray &json);
+    bool UploadClouds();
 private:
     //long long _filesize;//after encode
     const int segmentLength = 1024*1024*16;//each block 2MB
